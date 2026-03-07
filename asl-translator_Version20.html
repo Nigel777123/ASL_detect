@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ASL Translator</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <style>
+    :root { --accent1:#7c3aed; --accent2:#3b82f6; --accent3:#a78bfa; }
+
+    [data-theme="dark"] {
+      --bg: linear-gradient(135deg,#0f0c1a 0%,#0c1628 50%,#0f0c1a 100%);
+      --glass-bg: rgba(255,255,255,0.05);
+      --glass-border: rgba(255,255,255,0.12);
+      --glass-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      --glass-hover: rgba(255,255,255,0.08);
+      --text-primary: #f0f0ff;
+      --text-secondary: #a0a0c0;
+      --text-muted: #606080;
+      --card-shine: rgba(255,255,255,0.03);
+      --input-bg: rgba(0,0,0,0.3);
+      --orb1: rgba(124,58,237,0.18);
+      --orb2: rgba(59,130,246,0.15);
+      --orb3: rgba(167,139,250,0.10);
+    }
+    [data-theme="light"] {
+      --bg: linear-gradient(135deg,#e8e0ff 0%,#dceeff 50%,#e8e0ff 100%);
+      --glass-bg: rgba(255,255,255,0.55);
+      --glass-border: rgba(255,255,255,0.85);
+      --glass-shadow: 0 8px 32px rgba(100,80,200,0.13);
+      --glass-hover: rgba(255,255,255,0.75);
+      --text-primary: #1a1040;
+      --text-secondary: #4a3f80;
+      --text-muted: #9090b0;
+      --card-shine: rgba(255,255,255,0.6);
+      --input-bg: rgba(255,255,255,0.6);
+      --orb1: rgba(124,58,237,0.12);
+      --orb2: rgba(59,130,246,0.10);
+      --orb3: rgba(167,139,250,0.08);
+    }
+
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body {
+      min-height:100vh; background:var(--bg); background-attachment:fixed;
+      color:var(--text-primary); font-family:'Segoe UI',system-ui,sans-serif;
+      display:flex; flex-direction:column; align-items:center;
+      padding:24px 16px 40px; transition:background 0.4s,color 0.4s;
+      position:relative; overflow-x:hidden;
+    }
+    body::before,body::after,.orb3{
+      content:''; position:fixed; border-radius:50%;
+      filter:blur(80px); pointer-events:none; z-index:0; transition:background 0.5s;
+    }
+    body::before{width:500px;height:500px;top:-120px;left:-120px;background:var(--orb1);}
+    body::after{width:400px;height:400px;bottom:-80px;right:-100px;background:var(--orb2);}
+    .orb3{width:300px;height:300px;top:40%;left:50%;transform:translateX(-50%);background:var(--orb3);}
+
+    .glass {
+      background:var(--glass-bg); border:1px solid var(--glass-border);
+      backdrop-filter:blur(20px) saturate(180%); -webkit-backdrop-filter:blur(20px) saturate(180%);
+      box-shadow:var(--glass-shadow),inset 0 1px 0 var(--card-shine);
+      border-radius:20px; transition:background 0.3s,border 0.3s; position:relative; z-index:1;
+    }
+
+    /* Header */
+    .header {
+      width:100%; max-width:980px; display:flex; align-items:center;
+      justify-content:space-between; margin-bottom:20px; z-index:2; position:relative;
+    }
+    .logo-area{display:flex;flex-direction:column;}
+    h1 {
+      font-size:2rem; font-weight:800;
+      background:linear-gradient(135deg,#a78bfa,#60a5fa,#f0abfc);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      background-clip:text; letter-spacing:-0.02em; line-height:1.1;
+    }
+    .subtitle{font-size:0.82rem;color:var(--text-muted);margin-top:3px;}
+
+    /* Theme toggle */
+    .theme-toggle{display:flex;align-items:center;gap:10px;}
+    .theme-label{font-size:0.8rem;color:var(--text-muted);font-weight:500;}
+    .toggle-switch{position:relative;width:56px;height:28px;cursor:pointer;}
+    .toggle-switch input{display:none;}
+    .toggle-track{position:absolute;inset:0;border-radius:14px;background:var(--glass-bg);border:1px solid var(--glass-border);backdrop-filter:blur(10px);transition:all 0.3s;overflow:hidden;}
+    .toggle-track::before{content:'🌙';position:absolute;left:6px;top:50%;transform:translateY(-50%);font-size:13px;transition:opacity 0.3s;}
+    .toggle-track::after{content:'☀️';position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:13px;opacity:0.4;transition:opacity 0.3s;}
+    .toggle-thumb{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--accent1),var(--accent2));box-shadow:0 2px 8px rgba(124,58,237,0.5);transition:transform 0.3s cubic-bezier(.4,0,.2,1);z-index:1;}
+    [data-theme="light"] .toggle-thumb{transform:translateX(28px);}
+    [data-theme="light"] .toggle-track::before{opacity:0.4;}
+    [data-theme="light"] .toggle-track::after{opacity:1;}
+
+    /* ── Mode Tabs ── */
+    .mode-tabs {
+      width:100%; max-width:980px; display:flex; gap:10px;
+      margin-bottom:20px; z-index:2; position:relative;
+    }
+    .tab-btn {
+      flex:1; padding:12px 10px; border-radius:14px; border:1px solid var(--glass-border);
+      background:var(--glass-bg); backdrop-filter:blur(12px);
+      color:var(--text-muted); font-size:0.85rem; font-weight:600;
+      cursor:pointer; transition:all 0.25s; display:flex; align-items:center;
+      justify-content:center; gap:7px; letter-spacing:0.02em;
+    }
+    .tab-btn:hover{background:var(--glass-hover);color:var(--text-primary);transform:translateY(-1px);}
+    .tab-btn.active {
+      background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(59,130,246,0.25));
+      border-color:rgba(167,139,250,0.5);
+      color:var(--text-primary);
+      box-shadow:0 4px 20px rgba(124,58,237,0.2),inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .tab-icon{font-size:1.1rem;}
+
+    /* Mode panels */
+    .mode-panel{display:none; width:100%; max-width:980px; z-index:1; position:relative;}
+    .mode-panel.active{display:block;}
+
+    /* Grid */
+    .main-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;}
+    @media(max-width:680px){.main-grid{grid-template-columns:1fr;}}
+
+    .card{padding:20px;}
+    .card-title{font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:14px;display:flex;align-items:center;gap:6px;}
+    .card-title span{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--accent1),var(--accent2));font-size:12px;}
+
+    /* Camera */
+    .camera-wrap{position:relative;width:100%;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:#000;box-shadow:0 4px 24px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(255,255,255,0.08);}
+    #video,#videoAir{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+    #handCanvas,#airCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+    #handCanvas{transform:scaleX(-1);}
+
+    .cam-badge{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.55);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:4px 11px;font-size:0.7rem;font-weight:700;color:#888;z-index:10;transition:all 0.3s;}
+    .cam-badge.on{background:rgba(22,163,74,0.3);border-color:rgba(74,222,128,0.5);color:#4ade80;}
+
+    .live-sign{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.75));padding:20px 12px 12px;text-align:center;z-index:10;}
+    .live-letter{font-size:3.2rem;font-weight:900;color:#fff;line-height:1;text-shadow:0 0 24px rgba(167,139,250,0.8),0 0 60px rgba(124,58,237,0.4);}
+    .live-label{font-size:0.68rem;color:rgba(255,255,255,0.5);margin-top:3px;}
+
+    .hold-ring{position:absolute;bottom:52px;left:50%;transform:translateX(-50%);width:64px;height:64px;pointer-events:none;z-index:11;display:none;}
+    .hold-ring.active{display:block;}
+    .hold-ring svg{transform:rotate(-90deg);}
+    .hold-ring circle{fill:none;stroke:url(#ringGrad);stroke-width:4;stroke-dasharray:182;stroke-dashoffset:182;stroke-linecap:round;transition:stroke-dashoffset 0.1s linear;}
+
+    .smooth-wrap{margin-top:10px;display:flex;align-items:center;gap:8px;}
+    .smooth-label{font-size:0.7rem;color:var(--text-muted);white-space:nowrap;}
+    .smooth-bar{flex:1;height:4px;background:rgba(255,255,255,0.08);border-radius:4px;overflow:hidden;}
+    .smooth-fill{height:100%;background:linear-gradient(90deg,var(--accent1),var(--accent2));border-radius:4px;transition:width 0.1s;box-shadow:0 0 6px rgba(124,58,237,0.6);}
+
+    /* ── AIR DRAW ── */
+    .air-wrap {
+      position:relative; width:100%; aspect-ratio:4/3;
+      border-radius:14px; overflow:hidden; background:#000;
+      box-shadow:0 4px 24px rgba(0,0,0,0.3),inset 0 0 0 1px rgba(255,255,255,0.08);
+    }
+
+    /* Drawing canvas that persists strokes — sits ABOVE video */
+    #drawCanvas {
+      position:absolute; inset:0; width:100%; height:100%;
+      pointer-events:none; z-index:5; transform:scaleX(-1);
+    }
+
+    /* Fingertip cursor layer */
+    #cursorCanvas {
+      position:absolute; inset:0; width:100%; height:100%;
+      pointer-events:none; z-index:6; transform:scaleX(-1);
+    }
+
+    /* AR overlay instructions */
+    .air-hint {
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,0.6); backdrop-filter:blur(10px);
+      border:1px solid rgba(255,255,255,0.1); border-radius:20px;
+      padding:5px 14px; font-size:0.7rem; color:rgba(255,255,255,0.7);
+      z-index:10; white-space:nowrap; pointer-events:none;
+    }
+
+    /* Gesture status badge */
+    .gesture-badge {
+      position:absolute; top:10px; right:10px;
+      background:rgba(0,0,0,0.55); backdrop-filter:blur(10px);
+      border:1px solid rgba(255,255,255,0.12); border-radius:20px;
+      padding:4px 11px; font-size:0.7rem; font-weight:700;
+      color:#888; z-index:10; transition:all 0.3s;
+    }
+    .gesture-badge.drawing{background:rgba(124,58,237,0.3);border-color:rgba(167,139,250,0.5);color:#c4b5fd;}
+    .gesture-badge.lifted{background:rgba(59,130,246,0.3);border-color:rgba(96,165,250,0.5);color:#93c5fd;}
+
+    /* Draw toolbar */
+    .draw-toolbar {
+      display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; align-items:center;
+    }
+
+    .color-picker-wrap{display:flex;gap:6px;align-items:center;}
+    .color-dot {
+      width:24px; height:24px; border-radius:50%; cursor:pointer;
+      border:2px solid transparent; transition:all 0.2s; flex-shrink:0;
+    }
+    .color-dot.selected{border-color:#fff;transform:scale(1.25);box-shadow:0 0 8px currentColor;}
+
+    .size-wrap{display:flex;gap:6px;align-items:center;}
+    .size-btn {
+      width:32px; height:32px; border-radius:8px; border:1px solid var(--glass-border);
+      background:var(--glass-bg); backdrop-filter:blur(8px); cursor:pointer;
+      display:flex; align-items:center; justify-content:center; transition:all 0.2s;
+      font-size:0.7rem; color:var(--text-muted); font-weight:700;
+    }
+    .size-btn.selected{background:rgba(124,58,237,0.25);border-color:rgba(167,139,250,0.5);color:#a78bfa;}
+    .size-btn:hover{background:var(--glass-hover);}
+
+    .toolbar-sep{width:1px;height:28px;background:var(--glass-border);margin:0 2px;}
+
+    /* Saved drawings */
+    .saved-wrap{margin-top:10px;}
+    .saved-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+    .saved-thumb{
+      width:60px;height:45px;border-radius:8px;border:1px solid var(--glass-border);
+      background:#000;cursor:pointer;overflow:hidden;position:relative;
+      transition:all 0.2s;
+    }
+    .saved-thumb:hover{border-color:rgba(167,139,250,0.5);transform:scale(1.05);}
+    .saved-thumb img{width:100%;height:100%;object-fit:cover;}
+    .saved-thumb .del-thumb{
+      position:absolute;top:2px;right:2px;background:rgba(220,38,38,0.8);
+      border-radius:50%;width:14px;height:14px;display:none;align-items:center;
+      justify-content:center;font-size:8px;color:#fff;cursor:pointer;
+    }
+    .saved-thumb:hover .del-thumb{display:flex;}
+
+    /* Buttons */
+    .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+    button{padding:9px 18px;border-radius:10px;border:none;cursor:pointer;font-size:0.82rem;font-weight:600;transition:all 0.2s;letter-spacing:0.02em;}
+    button:hover{transform:translateY(-1px);}
+    button:active{transform:translateY(0);}
+    button:disabled{opacity:0.35;cursor:not-allowed;transform:none;}
+    .btn-primary{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;box-shadow:0 4px 15px rgba(124,58,237,0.35);}
+    .btn-primary:hover{box-shadow:0 6px 20px rgba(124,58,237,0.5);}
+    .btn-glass{background:var(--glass-bg);border:1px solid var(--glass-border);backdrop-filter:blur(10px);color:var(--text-secondary);}
+    .btn-glass:hover{background:var(--glass-hover);}
+    .btn-green{background:rgba(22,163,74,0.25);border:1px solid rgba(74,222,128,0.3);color:#4ade80;}
+    .btn-green:hover{background:rgba(22,163,74,0.35);}
+    .btn-yellow{background:rgba(202,138,4,0.2);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;}
+    .btn-yellow:hover{background:rgba(202,138,4,0.3);}
+    .btn-red{background:rgba(220,38,38,0.2);border:1px solid rgba(248,113,113,0.3);color:#f87171;}
+    .btn-red:hover{background:rgba(220,38,38,0.3);}
+
+    /* Result box */
+    .result-big{background:var(--input-bg);border:1px solid var(--glass-border);border-radius:14px;padding:20px;min-height:90px;font-size:3rem;font-weight:900;color:var(--text-primary);display:flex;align-items:center;justify-content:center;text-align:center;letter-spacing:0.1em;text-shadow:0 0 20px rgba(167,139,250,0.3);backdrop-filter:blur(10px);}
+    .conf-row{text-align:center;margin-top:8px;min-height:28px;}
+    .confidence-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:0.75rem;font-weight:700;letter-spacing:0.04em;backdrop-filter:blur(10px);}
+    .conf-high  {background:rgba(22,163,74,0.2); color:#4ade80;border:1px solid rgba(74,222,128,0.4);}
+    .conf-medium{background:rgba(202,138,4,0.2); color:#fbbf24;border:1px solid rgba(251,191,36,0.4);}
+    .conf-low   {background:rgba(220,38,38,0.2); color:#f87171;border:1px solid rgba(248,113,113,0.4);}
+    .explanation{margin-top:10px;padding:10px 14px;background:var(--input-bg);border:1px solid var(--glass-border);border-radius:10px;font-size:0.78rem;color:var(--text-muted);display:none;backdrop-filter:blur(8px);}
+
+    .sentence-box{background:var(--input-bg);border:1px solid var(--glass-border);border-radius:12px;padding:14px 16px;min-height:56px;font-size:1.2rem;font-weight:600;color:var(--text-primary);letter-spacing:0.08em;word-break:break-all;backdrop-filter:blur(10px);}
+    .sentence-controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+    .tts-row{margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+    .divider{width:100%;height:1px;background:var(--glass-border);margin:14px 0;}
+    .section-label{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin:14px 0 8px;}
+    .auto-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+    .toggle-label{font-size:0.8rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;}
+    input[type=checkbox]{accent-color:var(--accent1);width:14px;height:14px;}
+    .pill{display:inline-flex;align-items:center;gap:5px;background:rgba(124,58,237,0.15);border:1px solid rgba(167,139,250,0.3);border-radius:20px;padding:2px 10px;font-size:0.68rem;font-weight:700;color:#a78bfa;letter-spacing:0.05em;}
+
+    .history-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;scrollbar-width:thin;scrollbar-color:rgba(124,58,237,0.3) transparent;}
+    .history-list::-webkit-scrollbar{width:4px;}
+    .history-list::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:4px;}
+    .history-item{background:var(--input-bg);border:1px solid var(--glass-border);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(6px);transition:background 0.2s;}
+    .history-item:hover{background:var(--glass-hover);}
+    .history-item .sign{font-weight:800;font-size:1.1rem;color:var(--text-primary);min-width:28px;text-align:center;}
+    .history-item .meta{font-size:0.72rem;color:var(--text-muted);flex:1;}
+    .history-item .add-btn{padding:3px 10px;border-radius:6px;border:1px solid var(--glass-border);background:var(--glass-bg);color:var(--text-secondary);cursor:pointer;font-size:0.72rem;font-weight:600;transition:all 0.2s;}
+    .history-item .add-btn:hover{background:var(--glass-hover);transform:none;}
+
+    .status-bar{width:100%;max-width:980px;margin-top:16px;padding:10px 16px;display:flex;align-items:center;gap:10px;z-index:1;position:relative;}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0;transition:background 0.3s;}
+    .dot.active{background:#4ade80;box-shadow:0 0 8px #4ade80;animation:pulse 1.5s infinite;}
+    .dot.loading{background:#fbbf24;box-shadow:0 0 8px #fbbf24;animation:pulse 0.6s infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    #statusText{font-size:0.8rem;color:var(--text-muted);}
+    .empty-state{color:var(--text-muted);font-size:0.82rem;text-align:center;padding:18px 0;}
+
+    /* Air draw info card */
+    .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;}
+    .info-card{background:var(--input-bg);border:1px solid var(--glass-border);border-radius:12px;padding:12px;text-align:center;backdrop-filter:blur(8px);}
+    .info-card .icon{font-size:1.5rem;margin-bottom:6px;}
+    .info-card .label{font-size:0.72rem;color:var(--text-secondary);font-weight:600;}
+    .info-card .desc{font-size:0.68rem;color:var(--text-muted);margin-top:3px;}
+  </style>
+</head>
+<body>
+
+<div class="orb3"></div>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#3b82f6"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo-area">
+    <h1>🤟 ASL Translator</h1>
+    <span class="subtitle">Real-time • Offline • MediaPipe Landmark Recognition</span>
+  </div>
+  <div class="theme-toggle">
+    <span class="theme-label" id="themeLabel">Dark</span>
+    <label class="toggle-switch" onclick="toggleTheme()">
+      <div class="toggle-track"></div>
+      <div class="toggle-thumb"></div>
+    </label>
+  </div>
+</div>
+
+<!-- Mode Tabs -->
+<div class="mode-tabs">
+  <button class="tab-btn active" id="tab-asl" onclick="switchMode('asl')">
+    <span class="tab-icon">🤟</span> ASL Translator
+  </button>
+  <button class="tab-btn" id="tab-air" onclick="switchMode('air')">
+    <span class="tab-icon">✍️</span> AR Air Board
+  </button>
+</div>
+
+<!-- ═══════════════ ASL MODE ═══════════════ -->
+<div class="mode-panel active" id="panel-asl">
+  <div class="main-grid">
+
+    <div class="card glass">
+      <div class="card-title"><span>📷</span> Live Camera</div>
+      <div class="camera-wrap" id="cameraWrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="handCanvas"></canvas>
+        <div class="cam-badge" id="camBadge">✋ No hand</div>
+        <div class="live-sign">
+          <div class="live-letter" id="liveLetter">—</div>
+          <div class="live-label">Hold still to add to sentence</div>
+        </div>
+        <div class="hold-ring" id="holdRing">
+          <svg viewBox="0 0 64 64" width="64" height="64">
+            <circle id="holdCircle" cx="32" cy="32" r="29"/>
+          </svg>
+        </div>
+      </div>
+      <div class="smooth-wrap">
+        <span class="smooth-label">Stability</span>
+        <div class="smooth-bar"><div class="smooth-fill" id="smoothFill" style="width:0%"></div></div>
+        <span class="smooth-label" id="smoothPct">0%</span>
+      </div>
+      <div class="controls">
+        <button class="btn-primary" id="startBtn" onclick="startASL()">▶ Start Camera</button>
+        <button class="btn-glass"   id="stopBtn"  onclick="stopASL()" disabled>■ Stop</button>
+      </div>
+      <div class="auto-row">
+        <label class="toggle-label"><input type="checkbox" id="autoAdd"/> Auto-add on hold</label>
+        <span class="pill">Hold ~1s to add</span>
+      </div>
+    </div>
+
+    <div class="card glass">
+      <div class="card-title"><span>🔤</span> Detected Sign</div>
+      <div class="result-big" id="resultText">—</div>
+      <div class="conf-row"><span class="confidence-badge" id="confBadge" style="display:none"></span></div>
+      <div class="explanation" id="explanation"></div>
+      <div class="divider"></div>
+      <div class="section-label">📝 Sentence Builder</div>
+      <div class="sentence-box" id="sentenceBox">_</div>
+      <div class="sentence-controls">
+        <button class="btn-green"  onclick="addSpace()">⎵ Space</button>
+        <button class="btn-yellow" onclick="deleteLastChar()">⌫ Delete</button>
+        <button class="btn-red"    onclick="clearSentence()">✕ Clear</button>
+      </div>
+      <div class="tts-row">
+        <button class="btn-glass" onclick="speakSentence()" style="padding:7px 14px;font-size:.78rem">🔊 Speak Sentence</button>
+      </div>
+    </div>
+
+    <div class="card glass" style="grid-column:1/-1">
+      <div class="card-title"><span>🕒</span> Sign History</div>
+      <div class="history-list" id="historyList">
+        <div class="empty-state">No signs detected yet — start the camera and make a sign!</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════ AIR DRAW MODE ═══════════════ -->
+<div class="mode-panel" id="panel-air">
+  <div class="main-grid">
+
+    <!-- Drawing board -->
+    <div class="card glass" style="grid-column:1/-1">
+      <div class="card-title"><span>✍️</span> AR Floating Board
+        <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);text-transform:none;letter-spacing:0">
+          ☝️ Raise index to draw &nbsp;|&nbsp; ✌️ Raise 2 fingers to lift pen &nbsp;|&nbsp; ✊ Fist to erase last stroke
+        </span>
+      </div>
+
+      <div class="air-wrap" id="airWrap">
+        <video id="videoAir" autoplay playsinline muted></video>
+        <!-- persistent drawing layer -->
+        <canvas id="drawCanvas"></canvas>
+        <!-- fingertip cursor layer -->
+        <canvas id="cursorCanvas"></canvas>
+        <div class="air-hint" id="airHint">Start the camera to begin drawing ✨</div>
+        <div class="gesture-badge" id="gestureBadge">No hand</div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="draw-toolbar">
+        <!-- Colors -->
+        <div class="color-picker-wrap" id="colorPicker"></div>
+        <div class="toolbar-sep"></div>
+        <!-- Sizes -->
+        <div class="size-wrap">
+          <button class="size-btn selected" data-size="4"  onclick="setSize(4,this)">S</button>
+          <button class="size-btn"          data-size="8"  onclick="setSize(8,this)">M</button>
+          <button class="size-btn"          data-size="14" onclick="setSize(14,this)">L</button>
+          <button class="size-btn"          data-size="22" onclick="setSize(22,this)">XL</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <!-- Actions -->
+        <button class="btn-glass" onclick="undoStroke()" style="padding:7px 12px;font-size:.78rem">↩ Undo</button>
+        <button class="btn-red"   onclick="clearBoard()"  style="padding:7px 12px;font-size:.78rem">🗑 Clear</button>
+        <button class="btn-green" onclick="saveDrawing()" style="padding:7px 12px;font-size:.78rem">💾 Save</button>
+        <div style="margin-left:auto">
+          <button class="btn-primary" id="startAirBtn" onclick="startAir()" style="padding:8px 16px">▶ Start Camera</button>
+          <button class="btn-glass"   id="stopAirBtn"  onclick="stopAir()"  style="padding:8px 16px" disabled>■ Stop</button>
+        </div>
+      </div>
+
+      <!-- Saved snaps -->
+      <div class="saved-wrap">
+        <div class="section-label">💾 Saved Drawings</div>
+        <div class="saved-list" id="savedList">
+          <span style="font-size:0.75rem;color:var(--text-muted)">No saves yet — hit 💾 Save to capture!</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- How to use -->
+    <div class="card glass" style="grid-column:1/-1">
+      <div class="card-title"><span>💡</span> How to Use</div>
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="icon">☝️</div>
+          <div class="label">Draw</div>
+          <div class="desc">Raise only your <strong>index finger</strong> to draw on the board</div>
+        </div>
+        <div class="info-card">
+          <div class="icon">✌️</div>
+          <div class="label">Lift Pen</div>
+          <div class="desc">Raise <strong>index + middle finger</strong> to stop drawing (pen up)</div>
+        </div>
+        <div class="info-card">
+          <div class="icon">✊</div>
+          <div class="label">Undo</div>
+          <div class="desc">Make a <strong>fist</strong> to undo the last stroke instantly</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar glass">
+  <div class="dot" id="statusDot"></div>
+  <span id="statusText">Idle — click "Start Camera" to begin.</span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// THEME
+// ═══════════════════════════════════════════════════
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  document.getElementById('themeLabel').textContent=isDark?'Light':'Dark';
+  localStorage.setItem('asl_theme',isDark?'light':'dark');
+}
+(function(){
+  const saved=localStorage.getItem('asl_theme')||'dark';
+  document.documentElement.setAttribute('data-theme',saved);
+  document.getElementById('themeLabel').textContent=saved==='dark'?'Dark':'Light';
+})();
+
+// ═══════════════════════════════════════════════════
+// MODE SWITCH
+// ═══════════════════════════════════════════════════
+let currentMode='asl';
+function switchMode(mode){
+  currentMode=mode;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+mode).classList.add('active');
+  document.getElementById('panel-'+mode).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════
+// SHARED GLOBALS
+// ═══════════════════════════════════════════════════
+let aslStream=null, aslCamera=null;
+let airStream=null, airCamera=null;
+let sentence='', signHistory=[];
+const SMOOTH_FRAMES=8; let frameBuffer=[];
+let lastAddedSign='', holdFrames=0;
+const HOLD_THRESHOLD=20;
+
+const video=document.getElementById('video');
+const handCanvas=document.getElementById('handCanvas');
+const hCtx=handCanvas.getContext('2d');
+
+// ═══════════════════════════════════════════════════
+// FINGER MATH
+// ═══════════════════════════════════════════════════
+const FINGERS={thumb:[1,2,3,4],index:[5,6,7,8],middle:[9,10,11,12],ring:[13,14,15,16],pinky:[17,18,19,20]};
+const FINGERTIPS=[4,8,12,16,20];
+function angle3(A,B,C){
+  const AB={x:A.x-B.x,y:A.y-B.y,z:(A.z||0)-(B.z||0)};
+  const CB={x:C.x-B.x,y:C.y-B.y,z:(C.z||0)-(B.z||0)};
+  const dot=AB.x*CB.x+AB.y*CB.y+AB.z*CB.z;
+  const m=Math.sqrt(AB.x**2+AB.y**2+AB.z**2)*Math.sqrt(CB.x**2+CB.y**2+CB.z**2);
+  return m===0?0:Math.acos(Math.max(-1,Math.min(1,dot/m)))*180/Math.PI;
+}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2+((a.z||0)-(b.z||0))**2);}
+function isExtended(lm,f){const[mcp,pip,dip,tip]=FINGERS[f];return angle3(lm[mcp],lm[pip],lm[dip])>150&&angle3(lm[pip],lm[dip],lm[tip])>150;}
+function isCurled(lm,f){const[mcp,pip,dip]=FINGERS[f];return angle3(lm[mcp],lm[pip],lm[dip])<90;}
+function isThumbExtended(lm){return angle3(lm[0],lm[1],lm[4])>150;}
+function normDist(lm,a,b){const hs=dist(lm[0],lm[9]);return hs===0?999:dist(lm[a],lm[b])/hs;}
+function tipNearThumb(lm,i){return normDist(lm,4,i)<0.25;}
+
+// ═══════════════════════════════════════════════════
+// ASL RECOGNISER
+// ═══════════════════════════════════════════════════
+function recogniseASL(lm){
+  const Ie=isExtended(lm,'index'),Me=isExtended(lm,'middle'),Re=isExtended(lm,'ring'),Pe=isExtended(lm,'pinky');
+  const Ic=isCurled(lm,'index'),Mc=isCurled(lm,'middle'),Rc=isCurled(lm,'ring'),Pc=isCurled(lm,'pinky');
+  const Te=isThumbExtended(lm);
+  const iPIP=angle3(lm[5],lm[6],lm[7]),mPIP=angle3(lm[9],lm[10],lm[11]);
+  const rPIP=angle3(lm[13],lm[14],lm[15]),pPIP=angle3(lm[17],lm[18],lm[19]);
+  const iNT=tipNearThumb(lm,8),mNT=tipNearThumb(lm,12),rNT=tipNearThumb(lm,16),pNT=tipNearThumb(lm,20);
+  const imSpread=normDist(lm,8,12)>0.25;
+  if(iNT&&mNT&&rNT&&pNT)return{sign:'0',conf:'High',why:'All tips meet thumb'};
+  if(Ie&&Mc&&Rc&&Pc&&!Te)return{sign:'1',conf:'High',why:'Index only'};
+  if(Ie&&Me&&Rc&&Pc&&imSpread)return{sign:'2',conf:'High',why:'V shape'};
+  if(Te&&Ie&&Me&&Rc&&Pc)return{sign:'3',conf:'High',why:'Thumb+index+middle'};
+  if(!Te&&Ie&&Me&&Re&&Pe)return{sign:'4',conf:'High',why:'4 fingers up'};
+  if(Te&&Ie&&Me&&Re&&Pe)return{sign:'5',conf:'High',why:'All 5 extended'};
+  if(pNT&&Ie&&Me&&Re)return{sign:'6',conf:'Medium',why:'Pinky+thumb touch'};
+  if(rNT&&Ie&&Me&&Pe)return{sign:'7',conf:'Medium',why:'Ring+thumb touch'};
+  if(mNT&&Ie&&Re&&Pe)return{sign:'8',conf:'Medium',why:'Middle+thumb touch'};
+  if(iNT&&Mc&&Rc&&Pc)return{sign:'9',conf:'High',why:'Index+thumb circle'};
+  if(Ic&&Mc&&Rc&&Pc&&!Te&&!iNT)return{sign:'A',conf:'High',why:'Fist, thumb aside'};
+  if(Ie&&Me&&Re&&Pe&&!Te&&!imSpread)return{sign:'B',conf:'High',why:'4 fingers straight'};
+  if(iPIP>80&&iPIP<145&&mPIP>80&&mPIP<145&&rPIP>80&&rPIP<145&&pPIP>80&&pPIP<145&&!Ie&&!Me&&!Re&&!Pe)return{sign:'C',conf:'Medium',why:'Curved C'};
+  if(Ie&&mNT&&rNT&&pNT)return{sign:'D',conf:'High',why:'Index up, rest to thumb'};
+  if(iPIP<90&&mPIP<90&&rPIP<90&&pPIP<90&&!Te)return{sign:'E',conf:'Medium',why:'All bent tight'};
+  if(iNT&&Me&&Re&&Pe)return{sign:'F',conf:'High',why:'OK sign + 3 up'};
+  if(Ie&&!Me&&!Re&&!Pe&&Math.abs(lm[8].y-lm[5].y)<0.08)return{sign:'G',conf:'Medium',why:'Index horizontal'};
+  if(Ie&&Me&&Rc&&Pc&&!imSpread)return{sign:'H',conf:'Medium',why:'Index+middle horizontal'};
+  if(Pe&&Ic&&Mc&&Rc)return{sign:'I',conf:'High',why:'Pinky only'};
+  if(Ie&&Me&&Rc&&Pc&&imSpread&&Te)return{sign:'K',conf:'Medium',why:'Index+middle spread+thumb'};
+  if(Te&&Ie&&!Me&&!Re&&!Pe)return{sign:'L',conf:'High',why:'L shape'};
+  if(!Te&&Ic&&Mc&&Rc&&Pe)return{sign:'M',conf:'Low',why:'3 fingers over thumb'};
+  if(!Te&&Ic&&Mc&&Re&&Pe)return{sign:'N',conf:'Low',why:'2 fingers over thumb'};
+  if(iNT&&mNT&&rNT)return{sign:'O',conf:'High',why:'O shape'};
+  if(Ie&&Me&&Rc&&Pc&&!imSpread&&normDist(lm,8,12)<0.12)return{sign:'R',conf:'Medium',why:'Fingers crossed'};
+  if(Ic&&Mc&&Rc&&Pc&&!Te)return{sign:'S',conf:'Medium',why:'Closed fist'};
+  if(Ic&&Mc&&Rc&&Pc&&normDist(lm,4,8)<0.2&&normDist(lm,4,12)<0.2)return{sign:'T',conf:'Medium',why:'Thumb between fingers'};
+  if(Ie&&Me&&Rc&&Pc&&!imSpread)return{sign:'U',conf:'Medium',why:'Index+middle together'};
+  if(Ie&&Me&&Rc&&Pc&&imSpread)return{sign:'V',conf:'High',why:'Peace/V'};
+  if(Ie&&Me&&Re&&Pc)return{sign:'W',conf:'High',why:'3 fingers = W'};
+  if(!Ie&&iPIP>90&&iPIP<150&&Mc&&Rc&&Pc)return{sign:'X',conf:'Medium',why:'Index hooked'};
+  if(Te&&Pe&&Ic&&Mc&&Rc)return{sign:'Y',conf:'High',why:'Thumb+pinky'};
+  return{sign:'?',conf:'Low',why:'No pattern matched'};
+}
+
+// ═══════════════════════════════════════════════════
+// SMOOTHING
+// ═══════════════════════════════════════════════════
+function smoothedSign(s){
+  frameBuffer.push(s);
+  if(frameBuffer.length>SMOOTH_FRAMES)frameBuffer.shift();
+  const c={};frameBuffer.forEach(x=>{c[x]=(c[x]||0)+1;});
+  let best='?',bc=0;
+  for(const[k,v]of Object.entries(c))if(v>bc){bc=v;best=k;}
+  const pct=Math.round((bc/SMOOTH_FRAMES)*100);
+  document.getElementById('smoothFill').style.width=pct+'%';
+  document.getElementById('smoothPct').textContent=pct+'%';
+  return{sign:best,stability:pct};
+}
+
+// ═══════════════════════════════════════════════════
+// SKELETON DRAW
+// ═══════════════════════════════════════════════════
+const CONNS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+function drawSkeleton(lm,w,h,ctx){
+  const pts=lm.map(p=>({x:p.x*w,y:p.y*h}));
+  CONNS.forEach(([a,b])=>{
+    ctx.beginPath();ctx.moveTo(pts[a].x,pts[a].y);ctx.lineTo(pts[b].x,pts[b].y);
+    ctx.shadowColor='#a78bfa';ctx.shadowBlur=16;ctx.strokeStyle='#7c3aed';ctx.lineWidth=3;ctx.lineCap='round';ctx.stroke();
+    ctx.shadowBlur=3;ctx.strokeStyle='#a78bfa88';ctx.lineWidth=1.5;ctx.stroke();
+  });
+  pts.forEach((pt,i)=>{
+    const tip=FINGERTIPS.includes(i),r=tip?7:4;
+    ctx.beginPath();ctx.arc(pt.x,pt.y,r,0,Math.PI*2);
+    ctx.shadowColor=tip?'#f0abfc':'#a78bfa';ctx.shadowBlur=tip?24:12;
+    ctx.fillStyle=tip?'#f0abfc':'#c4b5fd';ctx.fill();
+  });
+  ctx.shadowBlur=0;ctx.shadowColor='transparent';
+}
+
+// ═══════════════════════════════════════════════════
+// ASL CAMERA
+// ═══════════════════════════════════════════════════
+async function startASL(){
+  try{
+    aslStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480},audio:false});
+    video.srcObject=aslStream;
+    await new Promise(r=>video.onloadedmetadata=r);
+    resizeCanvas('cameraWrap',handCanvas);
+    window.addEventListener('resize',()=>resizeCanvas('cameraWrap',handCanvas));
+    initASLMP();
+    setStatus('active','Camera active — show an ASL sign! 🖐');
+    document.getElementById('startBtn').disabled=true;
+    document.getElementById('stopBtn').disabled=false;
+  }catch(e){setStatus('','Camera error: '+e.message);}
+}
+function stopASL(){
+  if(aslCamera){aslCamera.stop();aslCamera=null;}
+  if(aslStream){aslStream.getTracks().forEach(t=>t.stop());aslStream=null;}
+  video.srcObject=null;
+  hCtx.clearRect(0,0,handCanvas.width,handCanvas.height);
+  frameBuffer=[];holdFrames=0;updateHoldRing(0);
+  document.getElementById('startBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  document.getElementById('camBadge').textContent='✋ No hand';
+  document.getElementById('camBadge').classList.remove('on');
+  document.getElementById('liveLetter').textContent='—';
+  setStatus('','Camera stopped.');
+}
+function initASLMP(){
+  const h=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.75,minTrackingConfidence:0.6});
+  h.onResults(onASLResults);
+  aslCamera=new Camera(video,{onFrame:async()=>{await h.send({image:video});},width:640,height:480});
+  aslCamera.start();
+}
+function onASLResults(results){
+  const w=handCanvas.width,h=handCanvas.height;
+  hCtx.clearRect(0,0,w,h);
+  if(results.multiHandLandmarks?.length){
+    const lm=results.multiHandLandmarks[0];
+    drawSkeleton(lm,w,h,hCtx);
+    const raw=recogniseASL(lm);
+    const{sign,stability}=smoothedSign(raw.sign);
+    document.getElementById('liveLetter').textContent=sign;
+    document.getElementById('camBadge').textContent='✋ '+sign;
+    document.getElementById('camBadge').classList.add('on');
+    if(sign!=='?'){
+      document.getElementById('resultText').textContent=sign;
+      const conf=stability>75?'High':stability>45?'Medium':'Low';
+      const badge=document.getElementById('confBadge');
+      badge.style.display='inline-block';
+      badge.textContent=conf+' confidence · '+stability+'% stable';
+      badge.className='confidence-badge conf-'+conf.toLowerCase();
+      const ex=document.getElementById('explanation');
+      ex.style.display='block';ex.textContent='💡 '+raw.why;
+    }
+    if(sign===lastAddedSign&&sign!=='?'){
+      holdFrames++;updateHoldRing(holdFrames/HOLD_THRESHOLD);
+      if(holdFrames>=HOLD_THRESHOLD&&document.getElementById('autoAdd').checked){addToSentence(sign);holdFrames=0;}
+    }else{holdFrames=0;lastAddedSign=sign;updateHoldRing(0);}
+    if(sign!=='?'&&sign!==signHistory[0]?.sign){
+      signHistory.unshift({sign,time:new Date().toLocaleTimeString()});
+      if(signHistory.length>40)signHistory.pop();
+      renderHistory();
+    }
+  }else{
+    frameBuffer=[];holdFrames=0;updateHoldRing(0);
+    document.getElementById('camBadge').textContent='✋ No hand';
+    document.getElementById('camBadge').classList.remove('on');
+    document.getElementById('liveLetter').textContent='—';
+    document.getElementById('smoothFill').style.width='0%';
+    document.getElementById('smoothPct').textContent='0%';
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// AR AIR DRAW
+// ═══════════════════════════════════════════════════
+const videoAir    = document.getElementById('videoAir');
+const drawCanvas  = document.getElementById('drawCanvas');
+const cursorCanvas= document.getElementById('cursorCanvas');
+const dCtx        = drawCanvas.getContext('2d');
+const curCtx      = cursorCanvas.getContext('2d');
+
+let drawColor='#a78bfa', drawSize=4;
+let isDrawing=false, lastPt=null;
+let strokes=[]; // array of ImageData snapshots for undo
+let savedDrawings=[];
+
+// Color palette
+const PALETTE=['#a78bfa','#60a5fa','#f472b6','#34d399','#fbbf24','#f87171','#ffffff','#000000'];
+function buildPalette(){
+  const wrap=document.getElementById('colorPicker');
+  PALETTE.forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.className='color-dot'+(i===0?' selected':'');
+    d.style.background=c;
+    d.style.color=c;
+    d.title=c;
+    d.onclick=()=>{setColor(c,d);};
+    wrap.appendChild(d);
+  });
+}
+function setColor(c,el){
+  drawColor=c;
+  document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function setSize(s,el){
+  drawSize=s;
+  document.querySelectorAll('.size-btn').forEach(b=>b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function startAir(){
+  try{
+    airStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480},audio:false});
+    videoAir.srcObject=airStream;
+    await new Promise(r=>videoAir.onloadedmetadata=r);
+    resizeCanvas('airWrap',drawCanvas);
+    resizeCanvas('airWrap',cursorCanvas);
+    window.addEventListener('resize',()=>{resizeCanvas('airWrap',drawCanvas);resizeCanvas('airWrap',cursorCanvas);});
+    initAirMP();
+    document.getElementById('startAirBtn').disabled=true;
+    document.getElementById('stopAirBtn').disabled=false;
+    document.getElementById('airHint').textContent='☝️ Raise index to draw  •  ✌️ Two fingers to lift pen  •  ✊ Fist to undo';
+    setStatus('active','Air Board active — start drawing! ✍️');
+  }catch(e){setStatus('','Camera error: '+e.message);}
+}
+
+function stopAir(){
+  if(airCamera){airCamera.stop();airCamera=null;}
+  if(airStream){airStream.getTracks().forEach(t=>t.stop());airStream=null;}
+  videoAir.srcObject=null;
+  curCtx.clearRect(0,0,cursorCanvas.width,cursorCanvas.height);
+  document.getElementById('startAirBtn').disabled=false;
+  document.getElementById('stopAirBtn').disabled=true;
+  document.getElementById('airHint').textContent='Start the camera to begin drawing ✨';
+  document.getElementById('gestureBadge').textContent='No hand';
+  document.getElementById('gestureBadge').className='gesture-badge';
+  setStatus('','Camera stopped.');
+}
+
+let prevFist=false;
+function initAirMP(){
+  const h=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  h.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.75,minTrackingConfidence:0.6});
+  h.onResults(onAirResults);
+  airCamera=new Camera(videoAir,{onFrame:async()=>{await h.send({image:videoAir});},width:640,height:480});
+  airCamera.start();
+}
+
+// Smoothing for tip position
+let tipHistory=[];
+const TIP_SMOOTH=5;
+function smoothTip(x,y){
+  tipHistory.push({x,y});
+  if(tipHistory.length>TIP_SMOOTH)tipHistory.shift();
+  const avg={x:tipHistory.reduce((s,p)=>s+p.x,0)/tipHistory.length, y:tipHistory.reduce((s,p)=>s+p.y,0)/tipHistory.length};
+  return avg;
+}
+
+function onAirResults(results){
+  const W=cursorCanvas.width, H=cursorCanvas.height;
+  curCtx.clearRect(0,0,W,H);
+
+  if(!results.multiHandLandmarks?.length){
+    isDrawing=false; lastPt=null; tipHistory=[];
+    document.getElementById('gestureBadge').textContent='No hand';
+    document.getElementById('gestureBadge').className='gesture-badge';
+    prevFist=false;
+    return;
+  }
+
+  const lm=results.multiHandLandmarks[0];
+
+  // Detect gestures
+  const Ie=isExtended(lm,'index');
+  const Me=isExtended(lm,'middle');
+  const Ic=isCurled(lm,'index');
+  const Mc=isCurled(lm,'middle');
+  const Rc=isCurled(lm,'ring');
+  const Pc=isCurled(lm,'pinky');
+
+  const isFist = Ic&&Mc&&Rc&&Pc&&!isThumbExtended(lm);
+  const isPenUp = Ie&&Me; // two fingers = pen up
+  const isPenDown = Ie&&!Me; // one finger = draw
+
+  // Undo on fist (rising edge)
+  if(isFist&&!prevFist){ undoStroke(); }
+  prevFist=isFist;
+
+  // Index tip position (mirrored to match video)
+  // canvas is CSS-mirrored via scaleX(-1) so we use x as-is
+  const rawX = lm[8].x * W;
+  const rawY = lm[8].y * H;
+  const {x,y} = smoothTip(rawX, rawY);
+
+  // Draw skeleton lightly on cursor canvas
+  drawSkeleton(lm,W,H,curCtx);
+
+  // Draw cursor ring at fingertip
+  curCtx.save();
+  curCtx.beginPath();
+  curCtx.arc(x,y,drawSize/2+6,0,Math.PI*2);
+  curCtx.strokeStyle=drawColor;
+  curCtx.lineWidth=2;
+  curCtx.shadowColor=drawColor;
+  curCtx.shadowBlur=12;
+  curCtx.stroke();
+
+  if(isPenDown){
+    // Glowing dot
+    curCtx.beginPath();
+    curCtx.arc(x,y,drawSize/2,0,Math.PI*2);
+    curCtx.fillStyle=drawColor;
+    curCtx.shadowColor=drawColor;
+    curCtx.shadowBlur=20;
+    curCtx.fill();
+    document.getElementById('gestureBadge').textContent='✏️ Drawing';
+    document.getElementById('gestureBadge').className='gesture-badge drawing';
+  } else if(isPenUp){
+    document.getElementById('gestureBadge').textContent='✌️ Pen Up';
+    document.getElementById('gestureBadge').className='gesture-badge lifted';
+  } else if(isFist){
+    document.getElementById('gestureBadge').textContent='✊ Undo';
+    document.getElementById('gestureBadge').className='gesture-badge';
+  }
+  curCtx.restore();
+
+  // Draw stroke on persistent canvas
+  if(isPenDown){
+    if(!isDrawing){
+      // Save snapshot before new stroke
+      strokes.push(dCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height));
+      isDrawing=true;
+      lastPt={x,y};
+    }
+    if(lastPt){
+      dCtx.beginPath();
+      dCtx.moveTo(lastPt.x,lastPt.y);
+      dCtx.lineTo(x,y);
+      dCtx.strokeStyle=drawColor;
+      dCtx.lineWidth=drawSize;
+      dCtx.lineCap='round';
+      dCtx.lineJoin='round';
+      dCtx.shadowColor=drawColor;
+      dCtx.shadowBlur=drawSize*0.8;
+      dCtx.stroke();
+      dCtx.shadowBlur=0;
+    }
+    lastPt={x,y};
+  } else {
+    isDrawing=false;
+    lastPt=null;
+  }
+}
+
+function undoStroke(){
+  if(strokes.length>0){
+    const snap=strokes.pop();
+    dCtx.putImageData(snap,0,0);
+  } else {
+    dCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  }
+}
+
+function clearBoard(){
+  strokes.push(dCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height));
+  dCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+}
+
+function saveDrawing(){
+  // Composite: video frame + drawing
+  const tmp=document.createElement('canvas');
+  tmp.width=drawCanvas.width; tmp.height=drawCanvas.height;
+  const tCtx=tmp.getContext('2d');
+  tCtx.save();
+  tCtx.translate(tmp.width,0);
+  tCtx.scale(-1,1);
+  tCtx.drawImage(videoAir,0,0,tmp.width,tmp.height);
+  tCtx.restore();
+  tCtx.drawImage(drawCanvas,0,0);
+  const url=tmp.toDataURL('image/png');
+  savedDrawings.push(url);
+  renderSaved();
+}
+
+function renderSaved(){
+  const list=document.getElementById('savedList');
+  if(!savedDrawings.length){list.innerHTML='<span style="font-size:0.75rem;color:var(--text-muted)">No saves yet</span>';return;}
+  list.innerHTML=savedDrawings.map((url,i)=>`
+    <div class="saved-thumb" onclick="downloadSave(${i})">
+      <img src="${url}" alt="save ${i}"/>
+      <div class="del-thumb" onclick="event.stopPropagation();deleteSave(${i})">✕</div>
+    </div>`).join('');
+}
+function downloadSave(i){
+  const a=document.createElement('a');
+  a.href=savedDrawings[i];
+  a.download='air-drawing-'+Date.now()+'.png';
+  a.click();
+}
+function deleteSave(i){ savedDrawings.splice(i,1); renderSaved(); }
+
+// ═══════════════════════════════════════════════════
+// RESIZE CANVAS
+// ═══════════════════════════════════════════════════
+function resizeCanvas(wrapId, canvas){
+  const w=document.getElementById(wrapId);
+  canvas.width=w.offsetWidth; canvas.height=w.offsetHeight;
+}
+
+// ═══════════════════════════════════════════════════
+// HOLD RING
+// ═══════════════════════════════════════════════════
+function updateHoldRing(p){
+  const ring=document.getElementById('holdRing');
+  const circle=document.getElementById('holdCircle');
+  if(p<=0){ring.classList.remove('active');return;}
+  ring.classList.add('active');
+  const C=2*Math.PI*29;
+  circle.style.strokeDasharray=C;
+  circle.style.strokeDashoffset=C*(1-Math.min(p,1));
+}
+
+// ═══════════════════════════════════════════════════
+// SENTENCE BUILDER
+// ═══════════════════════════════════════════════════
+function addToSentence(s){sentence+=s;updateSentenceBox();}
+function addSpace(){sentence+=' ';updateSentenceBox();}
+function deleteLastChar(){sentence=sentence.slice(0,-1);updateSentenceBox();}
+function clearSentence(){sentence='';updateSentenceBox();}
+function updateSentenceBox(){document.getElementById('sentenceBox').textContent=sentence||'_';}
+function speakSentence(){
+  if(!sentence.trim())return;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(sentence));
+}
+
+// ═══════════════════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════════════════
+function renderHistory(){
+  const list=document.getElementById('historyList');
+  if(!signHistory.length){list.innerHTML='<div class="empty-state">No signs yet!</div>';return;}
+  list.innerHTML=signHistory.map(h=>`
+    <div class="history-item">
+      <span class="sign">${escHtml(h.sign)}</span>
+      <span class="meta">${h.time}</span>
+      <button class="add-btn" onclick="addToSentence('${escHtml(h.sign)}')">+ Add</button>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════
+function setStatus(type,msg){
+  const dot=document.getElementById('statusDot');
+  dot.className='dot'+(type?' '+type:'');
+  document.getElementById('statusText').textContent=msg;
+}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Init
+buildPalette();
+</script>
+</body>
+</html>
