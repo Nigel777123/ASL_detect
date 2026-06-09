@@ -1,34 +1,35 @@
-# Campus Lost & Found Platform 
+# American Sign Language (ASL) Detector
 
-An interactive web platform designed to help students seamlessly report, search, and recover lost items on campus. By combining smart search capabilities with community-driven features, this solution fosters a culture of cooperation and trust among students.
+A lightweight, browser-based American Sign Language (ASL) detector built entirely with web technologies. This application captures real-time video feed via the webcam, processes hand landmarks using Google MediaPipe, and uses OpenCV.js for image processing and feature classification entirely on the client side—no external backend server required.
 
 ## 🚀 Features
 
-* **Photo-Based Item Posts:** Easily upload and view high-quality images of lost or found items.
-* **Geotagged Listings:** Pinpoint exactly where an item was lost or found on an interactive campus map.
-* **AI-Powered Image Matching:** Automatically suggest potential matches between reported lost items and newly found items using image recognition.
-* **Secure Messaging:** Safely communicate with other students to coordinate the return of items without exposing personal contact information.
-* **Live Recovery Dashboard:** A real-time feed tracking the status of lost items, recent matches, and successful recoveries.
-* **Reputation System:** Build trust within the campus community through user ratings and a verified return history.
+* **100% Client-Side:** Runs completely inside the browser using HTML, CSS, and JavaScript. 
+* **Real-Time Hand Tracking:** Leverages Google MediaPipe Hands to detect and track 21 distinct hand landmarks instantly.
+* **OpenCV.js Integration:** Uses the WebAssembly build of OpenCV to handle canvas manipulation, matrix operations, and region-of-interest (ROI) processing.
+* **Live ASL Alphabet Classification:** Translates hand gestures into static ASL characters (A-Z) on the fly.
+* **Zero Installation for Users:** Since it is plain HTML/JS, it can be hosted directly on GitHub Pages with one click.
 
 ## 🛠️ Built With
 
-* **Frontend:** [e.g., React.js, Vue, Tailwind CSS]
-* **Backend:** [e.g., Node.js, Express, Python Django]
-* **Database:** [e.g., PostgreSQL, MongoDB]
-* **AI/ML:** [e.g., TensorFlow, OpenCV, or specific API used for image matching]
-* **Mapping:** [e.g., Mapbox, Google Maps API]
+* **HTML5 & CSS3:** Core application structure and responsive UI.
+* **Vanilla JavaScript (ES6+):** Application logic and webcam streaming.
+* **Google MediaPipe Hands:** Machine learning solution for high-fidelity hand and finger tracking.
+* **OpenCV.js:** WebAssembly-compiled OpenCV library for real-time computer vision tasks in the browser.
 
-## ⚙️ Installation & Setup
+## ⚙️ Getting Started
 
-To get a local copy up and running, follow these simple steps.
+Because this project is built entirely on standard frontend technologies, getting it running locally is incredibly simple.
 
 ### Prerequisites
-* [e.g., Node.js (v14 or higher)]
-* [e.g., npm or yarn]
 
-### Installation
+You do not need to install Node.js, Python, or any heavy compilers. You only need:
+* A modern web browser (Chrome, Firefox, Edge, or Safari).
+* A working webcam.
+* A local server environment (optional, but highly recommended for loading external assets or CDNs properly due to CORS security policies).
 
-1. Clone the repository:
+### Running Locally
+
+1. **Clone the repository:**
 ```bash
-   git clone [https://github.com/yourusername/campus-lost-and-found.git](https://github.com/yourusername/campus-lost-and-found.git)
+   git clone [https://github.com/yourusername/asl-detector-html.git](https://github.com/yourusername/asl-detector-html.git)
